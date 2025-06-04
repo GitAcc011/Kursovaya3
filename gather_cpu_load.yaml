@@ -1,0 +1,20 @@
+---
+- name: Gateger CPU load
+  hosts: all
+
+  vars:
+    - max_cpu_load
+    - max_cpu_load_server
+    - min_cpu_load
+    - min_cpu_load_server
+
+  tasks:
+    - name: Get min CPU load
+      shell: "free -m | awk '/Mem:/ { print $4 }'"
+      register: max_cpu_load
+
+  tasks:
+    - name: Get max CPU load
+      shell: "free -m | awk '/Mem:/ { print $4 }'"
+      register: min_cpu_load
+      
