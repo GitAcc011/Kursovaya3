@@ -3,18 +3,39 @@
   hosts: all
 
   vars:
-    - max_cpu_load
-    - max_cpu_load_server
-    - min_cpu_load
-    - min_cpu_load_server
+    max_cpu_load: 0
+    min_cpu_load: 100
+    current_cpu_load: 0
+    max_cpu_load_server: null
+    min_cpu_load_server: null
 
   tasks:
-    - name: Get min CPU load
-      shell: "free -m | awk '/Mem:/ { print $4 }'"
-      register: max_cpu_load
+    - name: Get CPU load
+      shell: "cat /proc/loadavg | awk '{print $1}'"
+      register: cpu_load_result
 
-  tasks:
-    - name: Get max CPU load
-      shell: "free -m | awk '/Mem:/ { print $4 }'"
-      register: min_cpu_load
-      
+    - name: Set current_cpu_load as float
+      set_fact:
+        current_cpu_load:"{{ cpu_load_result.stdout | float }}"
+
+    - name: Register MAX hostname
+      block:
+        - command: hostname
+          register: max_cpu_load_server
+        - set_fact:
+            max_cpu_load: "{{ current_cpu_load }}"
+      when: max_cpu_load <= current_cpu_load | float
+
+    - name: Register MIN hostname
+      block:
+        - command: hostname
+          register: min_cpu_load_server
+        - set_fact:
+            min_cpu_load: "{{ current_cpu_load }}"
+      when: min_cpu_load >= current_cpu_load | float
+
+    - name: Display result
+      debug:
+        msg: |
+          MAX CPU load: {{ max_cpu_load }} on {{ max_cpu_load_server.stdout if max_cpu_load_server is defined else 'N/A' }}
+          MIN CPU load: {{ min_cpu_load }} on {{ min_cpu_load_server.stdout if min_cpu_load_server is defined else 'N/A' }}
