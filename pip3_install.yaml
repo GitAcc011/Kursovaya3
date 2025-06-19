@@ -1,0 +1,44 @@
+--- 
+- name: Load best and worst hosts from files
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    - name: Read best host
+      set_fact:
+        best_host: "{{ lookup('file', 'files/best_host.txt') | trim }}"
+
+    - name: Read worst host
+      set_fact:
+        worst_host: "{{ lookup('file', 'files/worst_host.txt') | trim }}"
+
+    - name: Add best host to group 'lowload'
+      add_host:
+        name: "{{ best_host }}"
+        groups: lowload
+
+- name: Prepare host for Docker management
+  hosts: lowload
+  become: yes
+  tasks:
+
+    - name: Install Python 3 yum
+      yum:
+        name: python3
+        state: present
+      when: inventory_hostname == "host-redos"
+
+    - name: Install Python 3 apt
+      apt:
+        name: python3
+        state: present
+      when: inventory_hostname != "host-redos"
+
+    - name: Download get-pip.py
+      get_url:
+        url: https://bootstrap.pypa.io/pip/3.6/get-pip.py
+        dest: /tmp/get-pip.py
+
+    - name: Install pip using get-pip.py
+      command: python3 /tmp/get-pip.py
+      args:
+        creates: /usr/local/bin/pip3

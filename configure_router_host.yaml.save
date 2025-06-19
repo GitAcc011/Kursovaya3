@@ -3,7 +3,9 @@
 - name: Load most loaded host and assign to router group
   hosts: localhost
 
+
   tasks:
+
     - name: Read router host from file
       set_fact:
         router_host: "{{ lookup('file', 'files/worst_host.txt') | trim }}"
@@ -30,6 +32,7 @@
         router_ip: "{{ hostvars[groups['router'][0]].router_ip }}"
 
 
+
 - name: Gather router IP address
   hosts: router
   gather_facts: yes
@@ -47,13 +50,12 @@
 
   tasks:
 
-    - name:  Disable eth0 and eth0 interfaces
-      command: ip link set eth0 down
-      when: inventory_hostname == "host-astra"
-
-    - name:  Disable enp0s3 and eth0 interfaces
-      command: ip link set enp0s3 down
-      when: inventory_hostname != "host-astra"
+    - name: Disable enp0s3 and eth0 interfaces
+      command: ip link set {{ ite down
+      loop:
+        - eth0
+        - enp0s3
+      ignore_errors: yes
 
     - name: Prevent enp0s3 from starting on boot
       lineinfile:
@@ -69,12 +71,12 @@
         state: absent
       when: inventory_hostname == "host-astra"
 
-    - name: Set default route via router other
+    - name: Set default route via router
       command: ip route replace default via {{ hostvars['localhost']['router_ip'] }} dev enp0s8
-      when: inventory_hostname != "host-astra"
 
-    - name: Set default route via router astra
-      command: ip route replace default via {{ hostvars['localhost']['router_ip'] }} dev eth1
+    - name: Set default route via host-astra
+      command: ip route replace default via {{ router_ip }} dev eth0
+#      become: yes
       when: inventory_hostname == "host-astra" 
 
 
@@ -107,6 +109,7 @@
 
 
     - name: Save iptables rules (optional)
+      when: ansible_facts['distribution'] in ['Debian', 'Ubuntu']
       apt:
         name: iptables-persistent
         state: present

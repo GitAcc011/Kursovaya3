@@ -1,0 +1,25 @@
+--- 
+- name: Load host roles from files
+  hosts: localhost
+  gather_facts: no
+
+  tasks:
+
+
+    - name: Read most loaded host
+      slurp:
+        src: files/worst_host.txt
+      register: worst_host_raw
+
+    - name: Set most loaded host fact
+      set_fact:
+        worst_host: "{{ worst_host_raw.content | b64decode }}"
+
+    - name: Add worst_host to group 'router'
+      add_host:
+        name: "{{ worst_host }}"
+        groups: router
+
+    - name: Show all groups
+      debug:
+        var: groups

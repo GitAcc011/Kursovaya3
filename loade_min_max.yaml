@@ -1,0 +1,23 @@
+- name: Load best and worst hosts from files
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    - name: Read best host
+      set_fact:
+        best_host: "{{ lookup('file', 'files/best_host.txt') | trim }}"
+
+    - name: Read worst host
+      set_fact:
+        worst_host: "{{ lookup('file', 'files/worst_host.txt') | trim }}"
+
+    - name: Add best host to group 'lowload'
+      add_host:
+        name: "{{ best_host }}"
+        groups: lowload
+
+    - name: Add worst host to group 'highload'
+      add_host:
+        name: "{{ worst_host }}"
+        groups: highload
+
+

@@ -1,0 +1,3 @@
+host-astra 0.00
+host-redos 0.00
+host-alt 0.66

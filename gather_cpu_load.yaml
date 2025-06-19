@@ -1,41 +1,16 @@
 ---
-- name: Gateger CPU load
+- name: Gather CPU load from all servers
   hosts: all
-
-  vars:
-    max_cpu_load: 0
-    min_cpu_load: 100
-    current_cpu_load: 0
-    max_cpu_load_server: null
-    min_cpu_load_server: null
-
+  gather_facts: no
   tasks:
-    - name: Get CPU load
-      shell: "cat /proc/loadavg | awk '{print $1}'"
-      register: cpu_load_result
+    - name: Get 1-minute load average
+      shell: cat /proc/loadavg | awk '{print $1}'
+      register: cpu_load
 
-    - name: Set current_cpu_load as float
-      set_fact:
-        current_cpu_load:"{{ cpu_load_result.stdout | float }}"
-
-    - name: Register MAX hostname
-      block:
-        - command: hostname
-          register: max_cpu_load_server
-        - set_fact:
-            max_cpu_load: "{{ current_cpu_load }}"
-      when: max_cpu_load <= current_cpu_load | float
-
-    - name: Register MIN hostname
-      block:
-        - command: hostname
-          register: min_cpu_load_server
-        - set_fact:
-            min_cpu_load: "{{ current_cpu_load }}"
-      when: min_cpu_load >= current_cpu_load | float
-
-    - name: Display result
-      debug:
-        msg: |
-          MAX CPU load: {{ max_cpu_load }} on {{ max_cpu_load_server.stdout if max_cpu_load_server is defined else 'N/A' }}
-          MIN CPU load: {{ min_cpu_load }} on {{ min_cpu_load_server.stdout if min_cpu_load_server is defined else 'N/A' }}
+    - name: Write load result to local file
+      delegate_to: localhost
+      run_once: false
+      lineinfile:
+        path: "./files/cpu_loads.txt"
+        line: "{{ inventory_hostname }} {{ cpu_load.stdout }}"
+        create: yes

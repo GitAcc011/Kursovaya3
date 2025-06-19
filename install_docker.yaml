@@ -1,0 +1,132 @@
+---
+- name: Load best and worst hosts from files
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    - name: Read best host
+      set_fact:
+        best_host: "{{ lookup('file', 'files/best_host.txt') | trim }}"
+
+    - name: Add best host to group 'lowload'
+      add_host:
+        name: "{{ best_host }}"
+        groups: lowload
+
+
+- name: Install Docker
+  hosts: lowload
+  become: yes
+
+  tasks:
+    - name: Install basic dependencies
+      dnf:
+        name:
+          - curl
+          - tar
+          - iptables
+        state: present
+      when: inventory_hostname == "host-redos"
+
+    - name: Install basic dependencies
+      apt:
+        name:
+          - curl
+          - tar
+          - iptables
+        state: present
+      when: inventory_hostname != "host-redos"
+
+
+    - name: Download Docker static binary
+      get_url:
+        url: https://download.docker.com/linux/static/stable/x86_64/docker-24.0.7.tgz
+        dest: /tmp/docker.tgz
+        mode: 0755
+
+    - name: Create docker bin directory
+      file:
+        path: /usr/local/bin/docker
+        state: directory
+
+    - name: Extract Docker binaries
+      unarchive:
+        src: /tmp/docker.tgz
+        dest: /usr/local/bin/
+        remote_src: yes
+        extra_opts: "--strip-components=1"
+
+    - name: Create docker systemd service
+      copy:
+        dest: /etc/systemd/system/docker.service
+        content: |
+          [Unit]
+          Description=Docker Application Container Engine
+          Documentation=https://docs.docker.com
+          After=network-online.target firewalld.service
+          Wants=network-online.target
+
+          [Service]
+          Type=notify
+          ExecStart=/usr/local/bin/dockerd
+          ExecReload=/bin/kill -s HUP $MAINPID
+          LimitNOFILE=infinity
+          LimitNPROC=infinity
+          LimitCORE=infinity
+          TimeoutStartSec=0
+          Delegate=yes
+          KillMode=process
+          Restart=on-failure
+          StartLimitBurst=3
+          StartLimitInterval=60s
+
+          [Install]
+          WantedBy=multi-user.target
+        mode: 0644
+
+    - name: Create docker.socket
+      copy:
+        dest: /etc/systemd/system/docker.socket
+        content: |
+          [Unit]
+          Description=Docker Socket for the API
+          PartOf=docker.service
+
+          [Socket]
+          ListenStream=/var/run/docker.sock
+          SocketMode=0660
+          SocketUser=root
+          SocketGroup=docker
+
+          [Install]
+          WantedBy=sockets.target
+        mode: 0644
+
+    - name: Create docker group
+      group:
+        name: docker
+        state: present
+
+    - name: Reload systemd
+      systemd:
+        daemon_reload: yes
+
+    - name: Enable and start Docker
+      systemd:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Verify Docker installation
+      command: /usr/local/bin/docker --version
+      register: docker_version_result
+      changed_when: false
+
+    - name: Display Docker version
+      debug:
+        msg: "{{ docker_version_result.stdout }}"
+
+    - name: Install docker-compose
+      get_url:
+        url: https://github.com/docker/compose/releases/download/v2.23.3/docker-compose-linux-x86_64
+        dest: /usr/local/bin/docker-compose
+        mode: 0755

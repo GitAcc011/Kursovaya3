@@ -1,7 +1,21 @@
 --- 
 
+- name: Load best and worst hosts from files
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    - name: Read best host
+      set_fact:
+        best_host: "{{ lookup('file', 'files/best_host.txt') | trim }}"
+
+    - name: Add best host to group 'lowload'
+      add_host:
+        name: "{{ best_host }}"
+        groups: lowload
+
+
 - name: Deploy GraphDB in Docker
-  hosts: red
+  hosts: lowload
   become: yes
   gather_facts: yes
 
@@ -11,7 +25,7 @@
     image_tag: "10.8.8"
     data_volume: "/var/graphdb-data"
     ports:
-      - "7200:7200" # веб-интерфейс GraphDB
+      - "7200:7200"
     graphdb_uid: 1000
     graphdb_gid: 1000
 
@@ -23,6 +37,7 @@
         name: "{{ container_name }}"
         state: absent
         force_kill: true
+      ignore_errors: yes
 
     - name: Create GraphDB data directory
       file:
