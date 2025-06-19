@@ -3,7 +3,7 @@
 
 # Порядок выполнения плейбуков (команд)
 
-ansible-playbook -i hosts.ini gather_cpu_load.yaml
+ansible-playbook -i hosts.ini gather_cpu_load.yaml \n /n
 python3 choose_min_max.py
 ansible-playbook -i hosts.ini pip3_install.yaml
 ansible-playbook -i hosts.ini install_docker.yaml
