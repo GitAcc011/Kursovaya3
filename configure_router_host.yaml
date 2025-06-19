@@ -1,0 +1,133 @@
+--- 
+
+- name: Load most loaded host and assign to router group
+  hosts: localhost
+
+
+  tasks:
+
+    - name: Read router host from file
+      set_fact:
+        router_host: "{{ lookup('file', 'files/worst_host.txt') | trim }}"
+
+    - name: Add router host to group
+      add_host:
+        name: "{{ router_host }}"
+        groups: router
+
+
+- name: Get router IP address
+  hosts: router
+  gather_facts: yes
+  tasks:
+    - name: Set router_ip fact
+      set_fact:
+        router_ip: "{{ ansible_all_ipv4_addresses | select('match', '^192\\.168\\.') | list | first }}"
+
+
+- name: Save router_ip to localhost for reuse
+  hosts: localhost
+  tasks:
+    - set_fact:
+        router_ip: "{{ hostvars[groups['router'][0]].router_ip }}"
+
+
+
+- name: Gather router IP address
+  hosts: router
+  gather_facts: yes
+  tasks:
+
+    - name: Set router IP address fact (from enp0s8)
+      set_fact:
+        router_ip: "{{ ansible_all_ipv4_addresses | select('match', '^192\\.168\\.') | list | first }}"
+
+
+- name: Disable NAT interface on non-router hosts
+  hosts: all:!router
+  become: yes
+
+
+  tasks:
+
+#    - name: Disable enp0s3 and eth0 interfaces
+#      command: ip link set {{ item }} down
+#      loop:
+#        - eth0
+#        - enp0s3
+#      ignore_errors: yes
+
+    - name:  Disable eth0 and eth0 interfaces
+      command: ip link set eth0 down
+      when: inventory_hostname == "host-astra"
+
+    - name:  Disable enp0s3 and eth0 interfaces
+      command: ip link set enp0s3 down
+      when: inventory_hostname != "host-astra"
+
+    - name: Prevent enp0s3 from starting on boot
+      lineinfile:
+        path: /etc/network/interfaces
+        regexp: "^auto enp0s3"
+        state: absent
+      when: ansible_os_family == 'Debian'
+
+    - name: Prevent enp0s3 from starting on boot
+      lineinfile:
+        path: /etc/network/interfaces
+        regexp: "^auto eth0"
+        state: absent
+      when: inventory_hostname == "host-astra"
+
+    - name: Set default route via router
+      command: ip route replace default via {{ hostvars['localhost']['router_ip'] }} dev enp0s8
+
+    - name: Set default route via host-astra
+      command: ip route replace default via {{ router_ip }} dev eth0
+#      become: yes
+      when: inventory_hostname == "host-astra" 
+
+
+- name: Configure router node
+  become: yes 
+  hosts: router
+
+
+  tasks:
+
+    - name: Enable IP forwarding
+      sysctl:
+        name: net.ipv4.ip_forward
+        value: '1'
+        state: present
+        sysctl_set: yes
+        reload: yes
+
+    - name: Set up NAT with iptables (if eth0 is the WAN interface)
+      ansible.builtin.command: iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
+      args:
+        warn: false
+      when: inventory_hostname == "host-astra" 
+
+    - name: Set up NAT with iptables (if eth0 is the WAN interface)
+      ansible.builtin.command: iptables -t nat -A POSTROUTING -o enp0s3 -j MASQUERADE
+      args:
+        warn: false
+      when: inventory_hostname != "host-astra" 
+
+
+    - name: Save iptables rules (optional)
+      when: ansible_facts['distribution'] in ['Debian', 'Ubuntu']
+      apt:
+        name: iptables-persistent
+        state: present
+        install_recommends: no
+
+    - name: Test external internet access
+      command: ping -c 3 8.8.8.8
+      register: ping_result
+      ignore_errors: yes
+
+    - name: Show ping result
+      debug:
+        var: ping_result.stdout_lines
