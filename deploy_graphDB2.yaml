@@ -1,0 +1,78 @@
+--- 
+
+- name: Deploy GraphDB in Docker
+  hosts: red
+  become: yes
+  gather_facts: yes
+
+  vars:
+    container_name: "graphdb"
+    image_name: "ontotext/graphdb"
+    image_tag: "10.8.8"
+    data_volume: "/var/graphdb-data"
+    ports:
+      - "7200:7200" # веб-интерфейс GraphDB
+    graphdb_uid: 1000
+    graphdb_gid: 1000
+
+
+  tasks:
+
+    - name: Remove existing GraphDB container
+      docker_container:
+        name: "{{ container_name }}"
+        state: absent
+        force_kill: true
+
+    - name: Create GraphDB data directory
+      file:
+        path: "{{ data_volume }}"
+        state: directory
+        mode: '0775'
+
+    - name: Set ownership for GraphDB data directory
+      command: chown {{ graphdb_uid }}:{{ graphdb_gid }} {{ data_volume }}
+
+    - name: Pull GraphDB Docker image
+      docker_image:
+        name: "{{ image_name }}"
+        tag: "{{ image_tag }}"
+        source: pull
+
+    - name: Run GraphDB container
+      docker_container:
+        name: "{{ container_name }}"
+        image: "{{ image_name }}:{{ image_tag }}"
+        state: started
+        restart_policy: unless-stopped
+        ports: "{{ ports }}"
+        volumes:
+          - "{{ data_volume }}:/opt/graphdb/home"
+        user: "{{ graphdb_uid }}:{{ graphdb_gid }}"
+        log_driver: json-file
+        log_options:
+          max-size: "10m"
+          max-file: "3"
+
+    - name: Wait for GraphDB to respond via HTTP
+      uri:
+        url: http://localhost:7200/
+        method: GET
+        status_code: 200
+        timeout: 30
+      register: graphdb_health
+      retries: 20
+      delay: 10
+      until: graphdb_health.status == 200
+      ignore_errors: yes
+
+    - name: Print container logs if GraphDB failed to respond
+      command: docker logs {{ container_name }}
+      when: graphdb_health is failed
+      register: graphdb_logs
+      ignore_errors: yes
+
+    - name: Show GraphDB container logs
+      debug:
+        var: graphdb_logs.stdout_lines
+      when: graphdb_logs is defined
